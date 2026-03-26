@@ -1,6 +1,7 @@
 import os
 import random
 import traceback  # 用于打印真实报错
+import time
 from PyQt5.QtWidgets import QLabel, QMainWindow, QApplication
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QPixmap, QTransform  # 修复了 QTransform 的导入
@@ -32,6 +33,9 @@ class FoxPet(QMainWindow):
         # 【新增】：鼠标互动的幽灵变量提前占位！
         self.drag_pos = None
         self.last_global_pos = None
+        # 丢狐狐
+        self.drag_pos = None
+        self.mouse_history = []  # 【新增】：速度黑匣子
 
         # 动作图库与寿命字典
         self.states = {
@@ -39,11 +43,13 @@ class FoxPet(QMainWindow):
             'IDLE':             {'frames': ['idle_01.png', 'idle_02.png'], 'speed': 15, 'loop': True, 'duration': (1.0, 6.0)},
             'STAND_TWO_FOOT':   {'frames': ['stand_two_foot.png'], 'speed': 15, 'loop': False, 'duration': (1.0, 5.0)},
             'BLINK':            {'frames': ['blink.png', 'idle_01.png'], 'speed': 5, 'loop': True, 'duration': (0.5, 2.0)},
-            'WALK':             {'frames': ['walk_01.png','stand_two_foot.png', 'walk_02.png', 'stand_two_foot.png'], 'speed': 15, 'loop': True, 'duration': (1.0, 5.0)},
+            'WALK':             {'frames': ['walk_01.png', 'stand_two_foot.png', 'walk_02.png', 'stand_two_foot.png'],
+                                 'speed': 10, 'loop': True, 'duration': (1.0, 5.0)},
+            'GO_TO_WALL': {'frames': ['walk_01.png', 'walk_02.png'], 'speed': 3, 'loop': True, 'duration': (99, 99)},
 
             # 墙壁区 (不倒立)
-            'CLIMB_UP': {'frames': ['climb_01.png', 'climb_02.png'], 'speed': 6, 'loop': True, 'duration': (1.0, 3.0)},
-            'CLIMB_DOWN': {'frames': ['climb_01.png', 'climb_02.png'], 'speed': 6, 'loop': True, 'duration': (1.0, 3.0)},
+            'CLIMB_UP': {'frames': ['climb_01.png', 'climb_02.png'], 'speed': 6, 'loop': True, 'duration': (1.0, 8.0)},
+            'CLIMB_DOWN': {'frames': ['climb_01.png', 'climb_02.png'], 'speed': 6, 'loop': True, 'duration': (1.0, 8.0)},
             'WALL_IDLE': {
                 'anim_pools': [['wall_idle.png'], ['wall_lick.png']],
                 'speed': 15, 'loop': True, 'duration': (2.0, 5.0)
@@ -67,7 +73,7 @@ class FoxPet(QMainWindow):
         # 格式 -> '当前状态': {'下一个状态A': 权重, '下一个状态B': 权重}
         self.transitions = {
             # 地面区
-            'IDLE':             {'STAND_TWO_FOOT': 50, 'WALK': 40, 'BLINK': 10},  # 发呆完：大概率去溜达，小概率眨眼
+            'IDLE':             {'STAND_TWO_FOOT': 40, 'WALK': 30, 'BLINK': 10, 'GO_TO_WALL': 20},  # 发呆完：大概率去溜达，小概率眨眼
             'BLINK':            {'IDLE': 100},
             'STAND_TWO_FOOT':   {'IDLE': 70, 'WALK': 30},  # 站完：大概率继续发呆，小概率走动
             'WALK':             {'IDLE': 60, 'STAND_TWO_FOOT': 40},  # 走完：停下来发呆或站立
@@ -120,6 +126,26 @@ class FoxPet(QMainWindow):
                 screen_height = QApplication.primaryScreen().geometry().height()
                 floor_y = screen_height - PET_SIZE - TASKBAR_HEIGHT
 
+                # ==========================================
+                # 【新增：终极防丢安全网 (虚空打捞)】
+                # 设定一个极其宽容的“异次元边界”（比如屏幕外 200 像素）
+                # 只要狐狐跨过了这条线，直接强制遣返！
+                if (self.y() > screen_height + WALL_OFFSET or
+                        self.y() < -WALL_OFFSET or
+                        self.x() < -WALL_OFFSET or
+                        self.x() > screen_width + WALL_OFFSET):
+                    # 强行重置坐标到屏幕正中间的顶端
+                    self.move(int(screen_width / 2), 50)
+
+                    # 动能彻底清零，防止它带着刚才的惯性继续乱飞
+                    self.dx = 0
+                    self.dy = 0
+
+                    # 强行切回掉落状态
+                    self.change_state('FALL')
+                    return  # 触发了打捞，这一帧后面的物理计算直接跳过，下班！
+                # ==========================================
+
                 # 1. 垂直受力分析 (重力)
                 special_states = ['CLIMB_UP', 'CLIMB_DOWN', 'WALL_IDLE',
                                   'CEILING_ENTER', 'CEILING_WALK', 'CEILING_IDLE']
@@ -132,21 +158,46 @@ class FoxPet(QMainWindow):
                 next_y = self.y() + self.dy
 
                 # 3. 碰撞拦截与状态切换
+                # 真正的物理墙壁坐标（允许窗口边框超出屏幕外）
+                left_bound = -WALL_OFFSET
+                right_bound = screen_width - PET_SIZE + WALL_OFFSET
 
                 # A. 左右墙壁检测 (走路和掉落时吸墙)
-                if self.current_state in ['WALK', 'FALL']:
-                    if next_x <= 0:
-                        next_x = 0  # 严防穿模
-                        self.change_state('WALL_IDLE')
+                if self.current_state in ['WALK', 'FALL', 'GO_TO_WALL']:
+                    if next_x <= left_bound and self.y() >= -200:
+                        next_x = left_bound  # 严防穿模
+                        # self.change_state('WALL_IDLE')
                         self.is_facing_right = False  # 脸朝屏幕内
-                    elif next_x >= screen_width - PET_SIZE:
-                        next_x = screen_width - PET_SIZE
+                        # 结算任务：赶路来的就直接爬，否则就先挂着发呆
+                        if self.current_state == 'GO_TO_WALL':
+                            self.change_state('CLIMB_UP')
+                        else:
+                            self.change_state('WALL_IDLE')
+
+                    elif next_x >= right_bound and self.y() >= -200:
+                        next_x = right_bound
                         self.change_state('WALL_IDLE')
                         self.is_facing_right = True
+                        if self.current_state == 'GO_TO_WALL':
+                            self.change_state('CLIMB_UP')
+                        else:
+                            self.change_state('WALL_IDLE')
+                    # 闲逛时的随机掉头（赶路和掉落时绝对不能掉头！）
                     elif self.current_state == 'WALK' and random.random() < 0.005:
                         self.dx = -self.dx
                         self.is_facing_right = (self.dx > 0)
                         self.animate()
+
+                     # --- 寻路区 ---
+                    elif self.current_state == 'GO_TO_WALL':
+                        # self.dy = 0
+                        # 判断离哪边墙更近
+                        if self.x() < screen_width / 2:
+                            self.dx = -3  # 往左赶路
+                            self.is_facing_right = False
+                        else:
+                            self.dx = 3  # 往右赶路
+                            self.is_facing_right = True
 
                 # B. 天花板边缘防穿模 (倒立走)
                 elif self.current_state == 'CEILING_WALK':
@@ -220,10 +271,6 @@ class FoxPet(QMainWindow):
 
         if pixmap.isNull():
             return
-
-        # 修复 1：正确的 QTransform 调用
-        #if self.is_facing_right:
-         #   pixmap = pixmap.transformed(QTransform().scale(-1, 1))
 
         # ==========================================
         # 【翻转滤镜组装区】
@@ -333,30 +380,58 @@ class FoxPet(QMainWindow):
             self.is_dragged = True
             self.drag_pos = event.globalPos() - self.frameGeometry().topLeft()
             self.change_state('DRAG')
-            # 记录抓起瞬间的坐标，用来算初速度
-            self.last_global_pos = event.globalPos()
+            # 【新增】：清空黑匣子，记录抓起瞬间的时间和坐标
+            self.mouse_history = [(time.time(), event.globalPos())]
 
     def mouseMoveEvent(self, event):
         if self.is_dragged:
-            new_global_pos = event.globalPos()
+            # 1. 记录当前时间和坐标
+            current_time = time.time()
+            current_pos = event.globalPos()
 
-            # 【物理核心】：计算鼠标挥动的瞬时速度！
-            if hasattr(self, 'last_global_pos'):
-                raw_dx = new_global_pos.x() - self.last_global_pos.x()
-                raw_dy = new_global_pos.y() - self.last_global_pos.y()
+            # 2. 塞进黑匣子
+            self.mouse_history.append((current_time, current_pos))
 
-                # 加上“限速器”，防止你一激动鼠标甩太快，狐狐直接飞出银河系闪退
-                self.dx = max(-40, min(40, raw_dx))
-                self.dy = max(-40, min(40, raw_dy))
+            # 3. 永远只保留最近的 5 笔记录（大概 0.1 秒的窗口，完美过滤掉松手时的刹车！）
+            if len(self.mouse_history) > 5:
+                self.mouse_history.pop(0)
 
-            self.last_global_pos = new_global_pos
-            self.move(new_global_pos - self.drag_pos)
+            # 4. 只管移动，不在这里算速度了！
+            self.move(current_pos - self.drag_pos)
 
     def mouseReleaseEvent(self, event):
         self.is_dragged = False
-        # 销毁历史轨迹
-        if hasattr(self, 'last_global_pos'):
-            del self.last_global_pos
-        # 松手瞬间呼叫守门员！此时 self.dx 和 self.dy 已经带着你甩鼠标的速度了！
         self.change_state('FALL')
+        # ==========================================
+        # 【核心：黑匣子结算真实速度】
+        if len(self.mouse_history) >= 2:
+            old_time, old_pos = self.mouse_history[0]  # 0.1秒前的位置
+            new_time, new_pos = self.mouse_history[-1]  # 现在的最后位置
+
+            dt = new_time - old_time  # 经历了多少秒
+
+            # 如果你抓着不动停了超过 0.15 秒才松手，说明你不想扔，动能清零
+            if dt > 0 and (time.time() - new_time) < DRAG_PAUSE_THRESHOLD:
+                # 算出一秒钟能飞多少像素 (像素/秒)
+                vx = (new_pos.x() - old_pos.x()) / dt
+                vy = (new_pos.y() - old_pos.y()) / dt
+
+                frame_seconds = REFRESH_RATE / 1000.0
+                # 转换成咱们引擎的每帧速度 (假设刷新率是 20ms，即 0.02秒)
+                # 直接乘个爽快系数！横向 1.5 倍，纵向 2.5 倍！
+                self.dx = vx * frame_seconds * THROW_BOOST_X
+                self.dy = vy * frame_seconds * THROW_BOOST_Y
+
+                # 暴力限速，防止飞出银河系报错
+                self.dx = max(-100, min(100, self.dx))
+                self.dy = max(-200, min(100, self.dy))
+
+            else:
+                self.dx = 0
+                self.dy = 0
+        else:
+            self.dx = 0
+            self.dy = 0
+        # ==========================================
+
 
