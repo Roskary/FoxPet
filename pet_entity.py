@@ -4,7 +4,7 @@ import traceback  # 用于打印真实报错
 import time
 from PyQt5.QtWidgets import QLabel, QMainWindow, QApplication
 from PyQt5.QtCore import QTimer, Qt
-from PyQt5.QtGui import QPixmap, QTransform  # 修复了 QTransform 的导入
+from PyQt5.QtGui import QPixmap, QTransform, QPainter  # 修复了 QTransform 的导入
 from conf import *
 
 
@@ -15,6 +15,16 @@ class FoxPet(QMainWindow):
         self.setAttribute(Qt.WA_TranslucentBackground)
 
         self.image_label = QLabel(self)
+
+        # ==========================================
+        # 【地形勘测：缓存屏幕可用尺寸】
+        # 使用 availableGeometry() 自动避开任务栏！
+        screen_geo = QApplication.primaryScreen().availableGeometry()
+        self.screen_width = screen_geo.width()
+        self.screen_height = screen_geo.height()
+        # 地板的 Y 坐标直接就是 可用高度 - 狐狐身高，再也不用算任务栏了！
+        self.floor_y = self.screen_height - PET_SIZE
+        # ==========================================
 
         self.current_state = None
         self.tick_count = 0  # 动画变速齿轮
@@ -46,7 +56,7 @@ class FoxPet(QMainWindow):
             'WALK':             {'frames': ['walk_01.png', 'stand_two_foot.png', 'walk_02.png', 'stand_two_foot.png'],
                                  'speed': 10, 'loop': True, 'duration': (1.0, 5.0)},
             'GO_TO_WALL': {'frames': ['walk_01.png', 'walk_02.png'], 'speed': 3, 'loop': True, 'duration': (99, 99)},
-
+            'JUMP_TO_WALL': {'frames': ['jump_to_wall.png'], 'speed': 99, 'loop': False, 'duration': (99, 99)},
             # 墙壁区 (不倒立)
             'CLIMB_UP': {'frames': ['climb_01.png', 'climb_02.png'], 'speed': 6, 'loop': True, 'duration': (1.0, 8.0)},
             'CLIMB_DOWN': {'frames': ['climb_01.png', 'climb_02.png'], 'speed': 6, 'loop': True, 'duration': (1.0, 8.0)},
@@ -73,11 +83,13 @@ class FoxPet(QMainWindow):
         # 格式 -> '当前状态': {'下一个状态A': 权重, '下一个状态B': 权重}
         self.transitions = {
             # 地面区
-            'IDLE':             {'STAND_TWO_FOOT': 40, 'WALK': 30, 'BLINK': 10, 'GO_TO_WALL': 20},  # 发呆完：大概率去溜达，小概率眨眼
+            #'IDLE':             {'STAND_TWO_FOOT': 30, 'WALK': 30, 'BLINK': 10, 'GO_TO_WALL': 15, 'JUMP_TO_WALL':15},  # 发呆完：大概率去溜达，小概率眨眼
+            'IDLE': {'STAND_TWO_FOOT': 0, 'WALK': 50, 'BLINK': 0, 'GO_TO_WALL': 0, 'JUMP_TO_WALL': 50},#test
             'BLINK':            {'IDLE': 100},
             'STAND_TWO_FOOT':   {'IDLE': 70, 'WALK': 30},  # 站完：大概率继续发呆，小概率走动
             'WALK':             {'IDLE': 60, 'STAND_TWO_FOOT': 40},  # 走完：停下来发呆或站立
             'LAND':             {'IDLE': 100},  # 落地后：100% 必定进入发呆
+            #'GO_TO_WALL':       {'CLIMB_UP': 100},
             # 'SLEEP': {'IDLE': 100}  # 睡醒后：100% 必定进入发呆
 
             # 墙壁单行道
@@ -90,10 +102,18 @@ class FoxPet(QMainWindow):
             'CEILING_IDLE': {'CEILING_WALK': 70, 'FALL': 30},
             'CEILING_WALK': {'CEILING_IDLE': 100},
         }
-        self.change_state('IDLE')
+        #self.change_state('FALL')
 
-        self.move(500, 500)
+        # ==========================================
+        # 【狐狐出场：动态空投坐标计算】
+        spawn_x = int(self.screen_width * 0.5 - PET_SIZE / 2)
+        spawn_y = int(-self.screen_height * 0.1)
+
+        self.move(spawn_x, spawn_y)
         self.show()
+
+        self.change_state('FALL')
+        # ==========================================
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_loop)
@@ -101,11 +121,6 @@ class FoxPet(QMainWindow):
 
     def update_loop(self):
         try:
-            # 修复 2：拎起时依然要刷新动画，只是跳过物理计算
-            # if self.is_dragged:
-            #   self.animate()
-            #  return
-
             # ------ 【命运轮盘区】 抽签决定下一个state------
             if self.state_timer >= self.current_duration:
                 # 1. 查字典，看看当前状态接下来有哪些路可以走
@@ -122,25 +137,17 @@ class FoxPet(QMainWindow):
 
             # ------ 【物理引擎区】 ------
             if not self.is_dragged:
-                screen_width = QApplication.primaryScreen().geometry().width()
-                screen_height = QApplication.primaryScreen().geometry().height()
-                floor_y = screen_height - PET_SIZE - TASKBAR_HEIGHT
-
                 # ==========================================
                 # 【新增：终极防丢安全网 (虚空打捞)】
-                # 设定一个极其宽容的“异次元边界”（比如屏幕外 200 像素）
-                # 只要狐狐跨过了这条线，直接强制遣返！
-                if (self.y() > screen_height + WALL_OFFSET or
-                        self.y() < -WALL_OFFSET or
-                        self.x() < -WALL_OFFSET or
-                        self.x() > screen_width + WALL_OFFSET):
+                if (self.y() > self.screen_height * 1.2 or
+                        self.y() < -self.screen_height * 0.2 or
+                        self.x() < -self.screen_width * 0.2 or
+                        self.x() > self.screen_width * 1.2):
                     # 强行重置坐标到屏幕正中间的顶端
-                    self.move(int(screen_width / 2), 50)
-
+                    self.move(int(self.screen_width / 2), 50)
                     # 动能彻底清零，防止它带着刚才的惯性继续乱飞
                     self.dx = 0
                     self.dy = 0
-
                     # 强行切回掉落状态
                     self.change_state('FALL')
                     return  # 触发了打捞，这一帧后面的物理计算直接跳过，下班！
@@ -160,72 +167,88 @@ class FoxPet(QMainWindow):
                 # 3. 碰撞拦截与状态切换
                 # 真正的物理墙壁坐标（允许窗口边框超出屏幕外）
                 left_bound = -WALL_OFFSET
-                right_bound = screen_width - PET_SIZE + WALL_OFFSET
+                right_bound = self.screen_width - PET_SIZE + WALL_OFFSET
 
-                # A. 左右墙壁检测 (走路和掉落时吸墙)
-                if self.current_state in ['WALK', 'FALL', 'GO_TO_WALL']:
-                    if next_x <= left_bound and self.y() >= -200:
-                        next_x = left_bound  # 严防穿模
-                        # self.change_state('WALL_IDLE')
-                        self.is_facing_right = False  # 脸朝屏幕内
-                        # 结算任务：赶路来的就直接爬，否则就先挂着发呆
+                # ==========================================
+                # A. 左右墙壁物理碰撞 (坚决不混入AI逻辑)
+                # ==========================================
+                if self.current_state in ['WALK', 'FALL', 'GO_TO_WALL', 'JUMP_TO_WALL']:
+
+                    # 撞左墙
+                    if next_x < left_bound and self.y() > -self.screen_height * 0.2:
+                        next_x = left_bound
+
+                        self.dx = 0  # 【必须踩死刹车！】
+                        self.dy = 0
+                        self.is_facing_right = False  # 【修正】：左墙脸朝右！
+
                         if self.current_state == 'GO_TO_WALL':
                             self.change_state('CLIMB_UP')
                         else:
                             self.change_state('WALL_IDLE')
 
-                    elif next_x >= right_bound and self.y() >= -200:
+                    # 撞右墙
+                    elif next_x > right_bound and self.y() > -self.screen_height * 0.2:
                         next_x = right_bound
-                        self.change_state('WALL_IDLE')
-                        self.is_facing_right = True
+
+                        self.dx = 0  # 【必须踩死刹车！】
+                        self.dy = 0
+                        self.is_facing_right = True  # 【修正】：右墙脸朝左！
+
                         if self.current_state == 'GO_TO_WALL':
                             self.change_state('CLIMB_UP')
                         else:
                             self.change_state('WALL_IDLE')
-                    # 闲逛时的随机掉头（赶路和掉落时绝对不能掉头！）
-                    elif self.current_state == 'WALK' and random.random() < 0.005:
+
+                    # 闲逛时的随机掉头
+                    elif self.current_state == 'WALK' and random.random() < PROB_TURN_AROUND :
                         self.dx = -self.dx
                         self.is_facing_right = (self.dx > 0)
                         self.animate()
 
-                     # --- 寻路区 ---
-                    elif self.current_state == 'GO_TO_WALL':
-                        # self.dy = 0
-                        # 判断离哪边墙更近
-                        if self.x() < screen_width / 2:
-                            self.dx = -3  # 往左赶路
-                            self.is_facing_right = False
-                        else:
-                            self.dx = 3  # 往右赶路
-                            self.is_facing_right = True
+                # ==========================================
+                # A+. 独立的自动寻路 AI 系统 (清清爽爽)
+                # ==========================================
+                if self.current_state == 'GO_TO_WALL':
+                    if self.x() < self.screen_width / 2:
+                        self.dx = -SPEED_RUN  # 往左赶路
+                        self.is_facing_right = False
+                    else:
+                        self.dx = SPEED_RUN  # 往右赶路
+                        self.is_facing_right = True
 
+                # ==========================================
                 # B. 天花板边缘防穿模 (倒立走)
+                # ==========================================
                 elif self.current_state == 'CEILING_WALK':
                     if next_x <= 0 and self.dx < 0:
                         self.dx = -self.dx
                         self.is_facing_right = True
-                    elif next_x >= screen_width - PET_SIZE and self.dx > 0:
+                    elif next_x >= self.screen_width - PET_SIZE and self.dx > 0:
                         self.dx = -self.dx
                         self.is_facing_right = False
-                    elif random.random() < 0.008:
+                    elif random.random() < PROB_CEILING_DROP:
                         self.change_state('CEILING_IDLE')
 
-                # C. 上下极限防穿模 (砸地板 / 爬到顶 / 爬到底)
-                if next_y >= floor_y:
-                    next_y = floor_y
-                    self.dy = 0  # 消除往下掉的趋势
-                    # 只有从天上掉下来，才加摩擦力停住！走路的 dx 绝对不能清零！
+                # ==========================================
+                # C. 上下极限防穿模 (砸地板 / 爬到顶)
+                # ==========================================
+                if next_y >= self.floor_y and self.dy >= 0:
+                    next_y = self.floor_y
+                    self.dy = 0
                     if self.current_state == 'FALL':
                         self.dx = 0
                         self.change_state('LAND')
                     elif self.current_state == 'CLIMB_DOWN':
+                        self.change_state('LAND')
+                    elif self.current_state == 'JUMP_TO_WALL':
                         self.change_state('LAND')
 
                 elif next_y <= 0 and self.current_state == 'CLIMB_UP':
                     next_y = 0
                     self.change_state('CEILING_ENTER')
 
-                # 4. 【最终批准】：所有状态，统一在最后执行一次位移！
+                # 4. 【最终批准】：统一位移！
                 self.move(int(next_x), int(next_y))
 
             # 节拍器跳动
@@ -305,6 +328,9 @@ class FoxPet(QMainWindow):
                 self.frame_index += 1
 
     def change_state(self, new_state):
+        # 实时打印：旧状态 -> 新状态
+        print(f"【状态切换】{self.current_state} -> {new_state}")
+
         # 状态切换的唯一指定通道（守门员）
         # 只有当新状态和现在的状态不一样时，才执行切换
         if self.current_state != new_state:
@@ -339,15 +365,15 @@ class FoxPet(QMainWindow):
 
             # 【每次切状态，默认关闭倒立，防止从天花板掉下来还头朝下】
             self.is_upside_down = False
-            self.dy = 0
+            #self.dy = 0
 
             # 1. 墙壁区 (只管上下，绝不倒立)
             if new_state == 'CLIMB_UP':
                 self.dx = 0
-                self.dy = -2  # 负数是向上爬
+                self.dy = -SPEED_CLIMB  # 负数是向上爬
             elif new_state == 'CLIMB_DOWN':
                 self.dx = 0
-                self.dy = 2  # 正数是向下滑 (你要求的，不翻转！)
+                self.dy = SPEED_CLIMB  # 正数是向下滑 (你要求的，不翻转！)
             elif new_state == 'WALL_IDLE':
                 self.dx = 0
                 self.dy = 0
@@ -357,7 +383,7 @@ class FoxPet(QMainWindow):
                 self.is_upside_down = True  # 【核心】：开启倒立！
                 self.dy = 0
                 if new_state == 'CEILING_WALK':
-                    self.dx = random.choice([-2, 2])
+                    self.dx = random.choice([-SPEED_CEILING, SPEED_CEILING])
                     self.is_facing_right = (self.dx > 0)
                 else:
                     self.dx = 0
@@ -368,10 +394,22 @@ class FoxPet(QMainWindow):
                 self.dx = 0
             elif new_state == 'WALK':
                 # 动态动作：起步瞬间，随机决定往左走还是往右走！
-                self.dx = random.choice([-2, 2])
+                self.dx = random.choice([-SPEED_WALK, SPEED_WALK])
                 # 根据速度的正负，立刻决定狐狐的朝向
                 self.is_facing_right = (self.dx > 0)
+            # ==========================================
+            # 【新增：起跳上墙的专属弹射器】
+            elif new_state == 'JUMP_TO_WALL':
+                self.dy = -SPEED_JUMP_Y  # 强力对抗重力，起飞！
 
+                # 雷达索敌：判断哪边墙近，直接锁定轰炸！
+                if self.x() < self.screen_width / 2:
+                    self.dx = -SPEED_JUMP_X
+                    self.is_facing_right = False
+                else:
+                    self.dx = SPEED_JUMP_X
+                    self.is_facing_right = True
+            # ==========================================
             # 顺便还可以把马上要用到的动画图立刻刷出来
             self.animate()
 
