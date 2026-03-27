@@ -2,11 +2,10 @@ import os
 import random
 import traceback  # 用于打印真实报错
 import time
-from PyQt5.QtWidgets import QLabel, QMainWindow, QApplication
+from PyQt5.QtWidgets import QLabel, QMainWindow, QApplication, QSystemTrayIcon, QMenu, QAction, qApp, QStyle
 from PyQt5.QtCore import QTimer, Qt
-from PyQt5.QtGui import QPixmap, QTransform, QPainter  # 修复了 QTransform 的导入
+from PyQt5.QtGui import QPixmap, QTransform, QIcon  # 修复了 QTransform 的导入
 from conf import *
-
 
 class FoxPet(QMainWindow):
     def __init__(self):
@@ -16,14 +15,10 @@ class FoxPet(QMainWindow):
 
         self.image_label = QLabel(self)
 
-        # ==========================================
         # 【地形勘测：缓存屏幕可用尺寸】
-        # 使用 availableGeometry() 自动避开任务栏！
         screen_geo = QApplication.primaryScreen().availableGeometry()
         self.screen_width = screen_geo.width()
         self.screen_height = screen_geo.height()
-        # 地板的 Y 坐标直接就是 可用高度 - 狐狐身高，再也不用算任务栏了！
-        self.floor_y = self.screen_height - PET_SIZE
         # ==========================================
 
         self.current_state = None
@@ -40,12 +35,15 @@ class FoxPet(QMainWindow):
         self.is_facing_right = False  # 角色默认面朝左
         self.is_upside_down = False   # 记住现在是不是倒立状态（在天花板上）
 
-        # 【新增】：鼠标互动的幽灵变量提前占位！
+        # 鼠标互动的幽灵变量提前占位！
         self.drag_pos = None
         self.last_global_pos = None
         # 丢狐狐
         self.drag_pos = None
         self.mouse_history = []  # 【新增】：速度黑匣子
+        # 狐狐图片大小，原PET_SIZE
+        self.current_size = None
+        self.floor_y = None
 
         # 动作图库与寿命字典
         self.states = {
@@ -83,13 +81,13 @@ class FoxPet(QMainWindow):
         # 格式 -> '当前状态': {'下一个状态A': 权重, '下一个状态B': 权重}
         self.transitions = {
             # 地面区
-            #'IDLE':             {'STAND_TWO_FOOT': 30, 'WALK': 30, 'BLINK': 10, 'GO_TO_WALL': 15, 'JUMP_TO_WALL':15},  # 发呆完：大概率去溜达，小概率眨眼
-            'IDLE': {'STAND_TWO_FOOT': 0, 'WALK': 50, 'BLINK': 0, 'GO_TO_WALL': 0, 'JUMP_TO_WALL': 50},#test
+            'IDLE':             {'STAND_TWO_FOOT': 30, 'WALK': 30, 'BLINK': 10, 'GO_TO_WALL': 15, 'JUMP_TO_WALL':15},  # 发呆完：大概率去溜达，小概率眨眼
+            # 'IDLE': {'STAND_TWO_FOOT': 0, 'WALK': 50, 'BLINK': 0, 'GO_TO_WALL': 0, 'JUMP_TO_WALL': 50},#test
             'BLINK':            {'IDLE': 100},
             'STAND_TWO_FOOT':   {'IDLE': 70, 'WALK': 30},  # 站完：大概率继续发呆，小概率走动
             'WALK':             {'IDLE': 60, 'STAND_TWO_FOOT': 40},  # 走完：停下来发呆或站立
             'LAND':             {'IDLE': 100},  # 落地后：100% 必定进入发呆
-            #'GO_TO_WALL':       {'CLIMB_UP': 100},
+            # 'GO_TO_WALL':       {'CLIMB_UP': 100},
             # 'SLEEP': {'IDLE': 100}  # 睡醒后：100% 必定进入发呆
 
             # 墙壁单行道
@@ -102,22 +100,74 @@ class FoxPet(QMainWindow):
             'CEILING_IDLE': {'CEILING_WALK': 70, 'FALL': 30},
             'CEILING_WALK': {'CEILING_IDLE': 100},
         }
-        #self.change_state('FALL')
+        # 【狐狐出场】
+        self.set_scale(1.0)
 
         # ==========================================
-        # 【狐狐出场：动态空投坐标计算】
-        spawn_x = int(self.screen_width * 0.5 - PET_SIZE / 2)
-        spawn_y = int(-self.screen_height * 0.1)
+        # 【极简版托盘中枢】
+        self.tray_icon = QSystemTrayIcon(self)
+        self.tray_icon.setIcon(QIcon("icon.png"))  # 必须同目录下有一张 icon.png！
+        # self.tray_icon.setIcon(self.style().standardIcon(QStyle.SP_ComputerIcon))
 
-        self.move(spawn_x, spawn_y)
-        self.show()
+        tray_menu = QMenu(self)
 
-        self.change_state('FALL')
+        # 1. 召唤按钮
+        summon_action = QAction("🦊 召唤狐狐", self)
+        summon_action.triggered.connect(self.summon_fox)
+        tray_menu.addAction(summon_action)
+
+        # 2. 体型缩放子菜单
+        scale_menu = QMenu("🔍 狐狐体型", self)
+
+        action_large = QAction("大 (150%)", self)
+        action_large.triggered.connect(lambda: self.set_scale(1.5))
+        scale_menu.addAction(action_large)
+
+        action_medium = QAction("中 (100% 默认)", self)
+        action_medium.triggered.connect(lambda: self.set_scale(1.0))
+        scale_menu.addAction(action_medium)
+
+        action_small = QAction("小 (75%)", self)
+        action_small.triggered.connect(lambda: self.set_scale(0.75))
+        scale_menu.addAction(action_small)
+
+        tray_menu.addMenu(scale_menu)
+
+        # 3. 退出按钮
+        quit_action = QAction("❌ 退出", self)
+        quit_action.triggered.connect(qApp.quit)
+        tray_menu.addAction(quit_action)
+
+        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.show()
         # ==========================================
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_loop)
         self.timer.start(REFRESH_RATE)
+
+    def set_scale(self, scale_factor):
+        # 1. 重新计算当前应该占用的像素大小
+        self.current_size = int(PET_SIZE * scale_factor)
+        # 2. 强行改变窗口的物理大小，贴图引擎会自动适应拉伸！
+        self.setFixedSize(self.current_size, self.current_size)
+        # 3. 极其关键：重新计算地板的 Y 坐标，防止变大后双腿陷进水泥地里
+        self.floor_y = self.screen_height - self.current_size
+        # 4. 暴力美学：为了防止它在墙角变大时卡进墙里，改变体型后直接触发大召唤术！
+        self.summon_fox()
+
+    def summon_fox(self):
+        # ==========================================
+        # 【大召唤术/出场/虚空打捞 统一接口】
+        spawn_x = int(self.screen_width * 0.5 - self.current_size / 2)
+        spawn_y = int(-self.screen_height * 0.1)
+        self.move(spawn_x, spawn_y)
+        self.dx = 0
+        self.dy = 0
+        # 3. 确保显示（这句极其关键！以后我们如果在托盘做了“隐藏狐狐”功能，
+        # 点击召唤就能顺便把它从隐藏状态拉出来！）
+        self.show()
+        self.change_state('FALL')
 
     def update_loop(self):
         try:
@@ -143,13 +193,7 @@ class FoxPet(QMainWindow):
                         self.y() < -self.screen_height * 0.2 or
                         self.x() < -self.screen_width * 0.2 or
                         self.x() > self.screen_width * 1.2):
-                    # 强行重置坐标到屏幕正中间的顶端
-                    self.move(int(self.screen_width / 2), 50)
-                    # 动能彻底清零，防止它带着刚才的惯性继续乱飞
-                    self.dx = 0
-                    self.dy = 0
-                    # 强行切回掉落状态
-                    self.change_state('FALL')
+                    self.summon_fox()
                     return  # 触发了打捞，这一帧后面的物理计算直接跳过，下班！
                 # ==========================================
 
@@ -287,7 +331,7 @@ class FoxPet(QMainWindow):
 
         # 1. 洗出照片，并强行无损压缩到 conf.py 里设定的 PET_SIZE
         pixmap = QPixmap(img_path).scaled(
-            PET_SIZE, PET_SIZE,
+            self.current_size, self.current_size,
             Qt.KeepAspectRatio,  # 保持原图的长宽比例，绝不拉伸变形
             Qt.SmoothTransformation  # 【关键】开启平滑抗锯齿，保证缩小后依然清晰锐利！
         )
@@ -329,7 +373,7 @@ class FoxPet(QMainWindow):
 
     def change_state(self, new_state):
         # 实时打印：旧状态 -> 新状态
-        print(f"【状态切换】{self.current_state} -> {new_state}")
+        # print(f"【状态切换】{self.current_state} -> {new_state}")
 
         # 状态切换的唯一指定通道（守门员）
         # 只有当新状态和现在的状态不一样时，才执行切换
@@ -471,5 +515,4 @@ class FoxPet(QMainWindow):
             self.dx = 0
             self.dy = 0
         # ==========================================
-
 
