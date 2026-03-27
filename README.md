@@ -11,19 +11,21 @@
 * 动能投掷引擎 (Fling Physics)：现在可以极其丝滑地将桌宠以抛物线“甩”飞，并动能吸附至屏幕边缘。
 * 实装虚空打捞机制 (OOB Failsafe)：添加了针对平流层与异次元死角的“安全网”。当桌宠被极高初速度甩出屏幕容差边界时，会强制触发空间传送，使其在屏幕正上方重新进入自由落体状态，彻底杜绝实例丢失。
 
-🚀 Update: 2026-03-28 (Acrobatics & Control Center Update)
-✨ 新增特性 (New Features)
+## 🚀 Update: 2026-03-28 (Acrobatics & Control Center Update)
+### ✨ 新增特性 (New Features)
+
+* 系统托盘中枢 (System Tray Integration)：为桌宠实装了 Windows 系统托盘（小图标）底座。新增右键丝滑呼出菜单，包含“强制退出”，“召唤狐狐”，“调整体型”功能。
 
 * 起跳上墙 (Dynamic Wall Jump)：新增 JUMP_TO_WALL 状态。赋予桌宠弹射起步能力，能够以抛物线轨迹（水平冲刺 + 强力对抗重力）主动跃向屏幕边缘，并在接触物理墙壁的瞬间被碰撞检测系统精准拦截，丝滑衔接至爬墙状态。
 
-⚙️ 架构重构与优化 (Refactoring & Optimization)
+### ⚙️ 架构重构与优化 (Refactoring & Optimization)
+
 魔法数字大清洗 (Magic Number Eradication)：对底层引擎进行工业级重构。将原本散落在主循环各个角落的硬编码（如速度、概率、倍率）全部抽离，建立顶层“狐狐基因库”（全局变量区）。现在仅需修改几个常量，即可完全改变桌宠的运动物理手感与 AI 多动程度。
 
+### 🐛 Bug 修复 (Bug Fixes)
+* 修复“原地扑腾”死锁 (Fixed Wall-Climb Deadlock)：排查并修复了由“地板防穿模检测”引起的 1 帧物理运算冲突。通过为地板检测附加 dy >= 0 的精准权限隔离，彻底杜绝了起步爬墙时垂直动能被错误清零的 Bug。
 
-🐛 Bug 修复 (Bug Fixes)
-修复“原地扑腾”死锁 (Fixed Wall-Climb Deadlock)：排查并修复了由“地板防穿模检测”引起的 1 帧物理运算冲突。通过为地板检测附加 dy >= 0 的精准权限隔离，彻底杜绝了起步爬墙时垂直动能被错误清零的 Bug。
-
-方向残影修复 (Fixed 1-Frame Facing Glitch)：修正了物理碰撞拦截与渲染器拍照（change_state）之间的代码时序错位问题，确保上墙瞬间的面部朝向 100% 精准无延迟。
+* 方向残影修复 (Fixed 1-Frame Facing Glitch)：修正了物理碰撞拦截与渲染器拍照（change_state）之间的代码时序错位问题，确保上墙瞬间的面部朝向 100% 精准无延迟。
 
 ## 编码环境
 Python3.6 + PyQt5 5.15.2
