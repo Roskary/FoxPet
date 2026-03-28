@@ -48,13 +48,30 @@ class FoxPet(QMainWindow):
         # 动作图库与寿命字典
         self.states = {
             # 地面区
-            'IDLE':             {'frames': ['idle_01.png', 'idle_02.png'], 'speed': 15, 'loop': True, 'duration': (1.0, 6.0)},
+            'IDLE':             {'frames': ['idle_01.png', 'idle_02.png'],
+                                 'speed': 15, 'loop': True, 'duration': (1.0, 6.0)},
             'STAND_TWO_FOOT':   {'frames': ['stand_two_foot.png'], 'speed': 15, 'loop': False, 'duration': (1.0, 5.0)},
-            'BLINK':            {'frames': ['blink.png', 'idle_01.png'], 'speed': 5, 'loop': True, 'duration': (0.5, 2.0)},
+            'STAND_FOUR_FOOT':  {'frames': ['stand_four_foot.png'], 'speed': 15, 'loop': False, 'duration': (1.0, 5.0)},
+            'STAND_UP':         {'frames': ['stand_four_foot.png', 'stand_up.png', 'stand_two_foot.png'], 'speed': 10,
+                                 'loop': False, 'duration': (1.0, 5.0)},
+            'DROP_DOWN':        {'frames': ['stand_two_foot.png', 'stand_up.png', 'stand_four_foot.png'], 'speed': 10,
+                                 'loop': False, 'duration': (1.0, 5.0)},
+            'SIT':              {'frames': ['sit.png'],
+                                 'speed': 5, 'loop': False, 'duration': (0.5, 2.0)},
+            'BLINK':            {'frames': ['blink.png', 'idle_02.png'],
+                                 'speed': 5, 'loop': True, 'duration': (0.5, 2.0)},
+            'SMILE':            {'anim_pools': [['smile_01.png'], ['smile_02.png']],
+                                 'speed': 5, 'loop': False, 'duration': (0.5, 2.0)},
             'WALK':             {'frames': ['walk_01.png', 'stand_two_foot.png', 'walk_02.png', 'stand_two_foot.png'],
                                  'speed': 10, 'loop': True, 'duration': (1.0, 5.0)},
-            'GO_TO_WALL': {'frames': ['walk_01.png', 'walk_02.png'], 'speed': 3, 'loop': True, 'duration': (99, 99)},
-            'JUMP_TO_WALL': {'frames': ['jump_to_wall.png'], 'speed': 99, 'loop': False, 'duration': (99, 99)},
+            'WALK_FOUR_FOOT':   {'frames': ['walk_four_foot_01.png',  'walk_four_foot_02.png'],
+                                 'speed': 10, 'loop': True, 'duration': (1.0, 5.0)},
+            'GO_TO_WALL':       {'frames': ['walk_01.png', 'walk_02.png'], 'speed': 3, 'loop': True, 'duration': (99, 99)},
+            'JUMP_TO_WALL':     {'frames': ['jump_to_wall.png'], 'speed': 99, 'loop': False, 'duration': (99, 99)},
+            'HUNT':             {'frames': ['hunt_01.png', 'hunt_02.png', 'hunt_03.png', 'hunt_04.png', 'hunt_05.png',
+                                            'hunt_06.png', 'hunt_07.png', 'hunt_08.png', 'hunt_09.png', 'hunt_10.png'],
+                                 'speed': 15, 'loop': False, 'duration': (6.0, 6.0)},
+
             # 墙壁区 (不倒立)
             'CLIMB_UP': {'frames': ['climb_01.png', 'climb_02.png'], 'speed': 6, 'loop': True, 'duration': (1.0, 8.0)},
             'CLIMB_DOWN': {'frames': ['climb_01.png', 'climb_02.png'], 'speed': 6, 'loop': True, 'duration': (1.0, 8.0)},
@@ -73,20 +90,36 @@ class FoxPet(QMainWindow):
             },
 
             # 鼠标事件
-            'DRAG':             {'frames': ['dragged.png'], 'speed': 15, 'loop': True, 'duration': (99, 99)},
-            'FALL':             {'frames': ['fall.png'], 'speed': 10, 'loop': False, 'duration': (99, 99)},
-            'LAND':             {'frames': ['land.png'], 'speed': 10, 'loop': False, 'duration': (0.5, 1.0)}
+            'DRAG': {'anim_pools': [['drag_struggle_04.png'],
+                                    ['drag_struggle_01.png', 'drag_struggle_02.png'],
+                                    ['drag_look_01.png'],
+                                    ['drag_look_02.png', 'drag_look_03.png'],
+                                    {'frames': ['drag_dangle_01.png', 'drag_dangle_02.png', 'drag_dangle_03.png'], 'loop': False}
+                                    ],
+                     'speed': 15, 'loop': True, 'duration': (99, 99)},
+            'FALL': {'frames': ['fall.png'], 'speed': 10, 'loop': False, 'duration': (99, 99)},
+            'LAND': {'frames': ['land.png'], 'speed': 10, 'loop': False, 'duration': (0.3, 0.5)},
+            'POKED':{'frames': ['poked.png'], 'speed': 3, 'loop': False, 'duration': (2.0, 2.0)},
         }
         # 状态转移字典：定义每个动作结束后，接下来能干嘛，以及对应的概率（权重）
         # 格式 -> '当前状态': {'下一个状态A': 权重, '下一个状态B': 权重}
         self.transitions = {
             # 地面区
-            'IDLE':             {'STAND_TWO_FOOT': 30, 'WALK': 30, 'BLINK': 10, 'GO_TO_WALL': 15, 'JUMP_TO_WALL':15},  # 发呆完：大概率去溜达，小概率眨眼
-            # 'IDLE': {'STAND_TWO_FOOT': 0, 'WALK': 50, 'BLINK': 0, 'GO_TO_WALL': 0, 'JUMP_TO_WALL': 50},#test
+            'IDLE':             {'STAND_TWO_FOOT': 30, 'STAND_FOUR_FOOT': 30, 'BLINK': 10, 'SMILE': 10,
+                                 'GO_TO_WALL': 10, 'JUMP_TO_WALL': 10},  # 发呆完：大概率去溜达，小概率眨眼
+            #'IDLE': {'STAND_FOUR_FOOT': 100,}, #test
+            'SIT':              {'IDLE': 100},
             'BLINK':            {'IDLE': 100},
-            'STAND_TWO_FOOT':   {'IDLE': 70, 'WALK': 30},  # 站完：大概率继续发呆，小概率走动
+            'SMILE':            {'IDLE': 100},
+            'STAND_TWO_FOOT':   {'IDLE': 50, 'WALK': 30, 'DROP_DOWN': 20},  # 站->坐/走/趴
+            'STAND_FOUR_FOOT':  {'IDLE': 20, 'WALK_FOUR_FOOT': 20, 'STAND_UP': 20, 'SIT': 20, 'HUNT': 20},  # 趴->坐/走/站
+            'DROP_DOWN':        {'STAND_FOUR_FOOT': 100},
+            'STAND_UP':         {'STAND_TWO_FOOT': 100},
             'WALK':             {'IDLE': 60, 'STAND_TWO_FOOT': 40},  # 走完：停下来发呆或站立
-            'LAND':             {'IDLE': 100},  # 落地后：100% 必定进入发呆
+            'WALK_FOUR_FOOT':   {'IDLE': 60, 'STAND_FOUR_FOOT': 40},  # 走完：停下来发呆或站立
+            'LAND':             {'IDLE': 100},  # 落地后-起立
+            'HUNT':             {'STAND_FOUR_FOOT': 100},
+            'POKED':            {'STAND_FOUR_FOOT': 100},
             # 'GO_TO_WALL':       {'CLIMB_UP': 100},
             # 'SLEEP': {'IDLE': 100}  # 睡醒后：100% 必定进入发呆
 
@@ -216,7 +249,7 @@ class FoxPet(QMainWindow):
                 # ==========================================
                 # A. 左右墙壁物理碰撞 (坚决不混入AI逻辑)
                 # ==========================================
-                if self.current_state in ['WALK', 'FALL', 'GO_TO_WALL', 'JUMP_TO_WALL']:
+                if self.current_state in ['WALK', 'WALK_FOUR_FOOT', 'FALL', 'GO_TO_WALL', 'JUMP_TO_WALL']:
 
                     # 撞左墙
                     if next_x < left_bound and self.y() > -self.screen_height * 0.2:
@@ -245,7 +278,7 @@ class FoxPet(QMainWindow):
                             self.change_state('WALL_IDLE')
 
                     # 闲逛时的随机掉头
-                    elif self.current_state == 'WALK' and random.random() < PROB_TURN_AROUND :
+                    elif self.current_state in ['WALK', 'WALK_FOUR_FOOT'] and random.random() < PROB_TURN_AROUND :
                         self.dx = -self.dx
                         self.is_facing_right = (self.dx > 0)
                         self.animate()
@@ -312,19 +345,15 @@ class FoxPet(QMainWindow):
             traceback.print_exc()
 
     def animate(self):
-        # 【修改这里】：直接用刚才守门员抽好的胶片！
         # 直接拿身体里的现成变量！
         frames = self.current_frames
         is_loop = self.current_is_loop
-
         # 防御性代码：如果这卷胶片是空的，直接罢工
         if not frames:
             return
-
         # 强制查验：如果记录的页码超出了当前动作的实际总张数，立刻归零！
         if self.frame_index >= len(frames):
             self.frame_index = 0
-
         img_path = os.path.join(ASSET_DIR, frames[self.frame_index])
         if not os.path.exists(img_path):
             return
@@ -372,90 +401,105 @@ class FoxPet(QMainWindow):
                 self.frame_index += 1
 
     def change_state(self, new_state):
+        if self.current_state == new_state:
+            return  # <--- 极其关键的 return，后面的代码全都不执行了
+
         # 实时打印：旧状态 -> 新状态
-        # print(f"【状态切换】{self.current_state} -> {new_state}")
+        print(f"【状态切换】{self.current_state} -> {new_state}")
 
-        # 状态切换的唯一指定通道（守门员）
-        # 只有当新状态和现在的状态不一样时，才执行切换
-        if self.current_state != new_state:
-            self.current_state = new_state
+        self.current_state = new_state
+        # 核心：只要经过这个门，所有附带变量强制全部清零重置！
+        self.state_timer = 0  # 状态生命周期清零
+        self.frame_index = 0  # 动画帧进度清零（保证从第0张图开始播）
+        self.tick_count = 0
 
-            # 核心：只要经过这个门，所有附带变量强制全部清零重置！
-            self.state_timer = 0  # 状态生命周期清零
-            self.frame_index = 0  # 动画帧进度清零（保证从第0张图开始播）
-            self.tick_count = 0
-
-            # ==========================================
-            # 【核心改造：选角抽卡】
-            state_info = self.states.get(new_state, {})
-
-            self.current_speed = state_info.get('speed', 10)
-            self.current_is_loop = state_info.get('loop', True)
-
-            # 抽盲盒（有 anim_pools）
-            if 'anim_pools' in state_info:
-                self.current_frames = random.choice(state_info['anim_pools'])
+        # ==========================================
+        # 【核心改造：全属性智能盲盒】
+        state_info = self.states.get(new_state, {})
+        # 1. 先提取宏观状态的“保底配置”（如果没写，引擎给个最基础的默认值）
+        default_speed = state_info.get('speed', 15)
+        default_loop = state_info.get('loop', True)
+        default_duration = state_info.get('duration', (1.0, 6.0))
+        # 2. 开始抽盲盒
+        if 'anim_pools' in state_info:
+            chosen_pool = random.choice(state_info['anim_pools'])
+            # 引擎自动识别包装
+            if isinstance(chosen_pool, dict):
+                # 【精装版字典】：优先读它自己的，如果没有写，就无缝继承外面的保底配置！
+                self.current_frames = chosen_pool.get('frames', [])
+                self.current_is_loop = chosen_pool.get('loop', default_loop)
+                self.current_speed = chosen_pool.get('speed', default_speed)
+                self.current_duration = chosen_pool.get('duration', default_duration)
             else:
-                self.current_frames = state_info.get('frames', [])
-            # ==========================================
+                # 【极其敷衍的纯列表】：直接当胶片用，其他属性全部用保底配置！
+                self.current_frames = chosen_pool
+                self.current_is_loop = default_loop
+                self.current_speed = default_speed
+                self.current_duration = default_duration
+        else:
+            # 普通单线动作的老规矩，全部用保底配置
+            self.current_frames = state_info.get('frames', [])
+            self.current_is_loop = default_loop
+            self.current_speed = default_speed
+            self.current_duration = default_duration
+        # ==========================================
+        # 1. 查字典，拿到的是人类能看懂的秒数区间，比如 (1.0, 6.0)
+        duration_sec_range = self.states.get(new_state, {}).get('duration', (1.0, 1.0))
+        # 2. 摇骰子，抽签出一个具体的秒数（用 random.uniform 可以抽出带小数的秒数，比如 2.3秒）
+        target_seconds = random.uniform(duration_sec_range[0], duration_sec_range[1])
+        # 3. 【消灭魔法数字】：引擎自动把“秒”翻译成“拍”！
+        # 比如 2.3秒 * 1000 / 20ms = 115 拍。强制转成整数 int() 喂给计时器。
+        self.current_duration = int((target_seconds * 1000) / REFRESH_RATE)
 
-            # 1. 查字典，拿到的是人类能看懂的秒数区间，比如 (1.0, 6.0)
-            duration_sec_range = self.states.get(new_state, {}).get('duration', (1.0, 1.0))
-            # 2. 摇骰子，抽签出一个具体的秒数（用 random.uniform 可以抽出带小数的秒数，比如 2.3秒）
-            target_seconds = random.uniform(duration_sec_range[0], duration_sec_range[1])
-            # 3. 【消灭魔法数字】：引擎自动把“秒”翻译成“拍”！
-            # 比如 2.3秒 * 1000 / 20ms = 115 拍。强制转成整数 int() 喂给计时器。
-            self.current_duration = int((target_seconds * 1000) / REFRESH_RATE)
+        # 【每次切状态，默认关闭倒立，防止从天花板掉下来还头朝下】
+        self.is_upside_down = False
+        #self.dy = 0
 
-            # 【每次切状态，默认关闭倒立，防止从天花板掉下来还头朝下】
-            self.is_upside_down = False
-            #self.dy = 0
+        # 1. 墙壁区 (只管上下，绝不倒立)
+        if new_state == 'CLIMB_UP':
+            self.dx = 0
+            self.dy = -SPEED_CLIMB  # 负数是向上爬
+        elif new_state == 'CLIMB_DOWN':
+            self.dx = 0
+            self.dy = SPEED_CLIMB  # 正数是向下滑 (你要求的，不翻转！)
+        elif new_state == 'WALL_IDLE':
+            self.dx = 0
+            self.dy = 0
 
-            # 1. 墙壁区 (只管上下，绝不倒立)
-            if new_state == 'CLIMB_UP':
-                self.dx = 0
-                self.dy = -SPEED_CLIMB  # 负数是向上爬
-            elif new_state == 'CLIMB_DOWN':
-                self.dx = 0
-                self.dy = SPEED_CLIMB  # 正数是向下滑 (你要求的，不翻转！)
-            elif new_state == 'WALL_IDLE':
-                self.dx = 0
-                self.dy = 0
-
-            # 2. 天花板区 (强制倒立)
-            elif new_state in ['CEILING_ENTER', 'CEILING_WALK', 'CEILING_IDLE']:
-                self.is_upside_down = True  # 【核心】：开启倒立！
-                self.dy = 0
-                if new_state == 'CEILING_WALK':
-                    self.dx = random.choice([-SPEED_CEILING, SPEED_CEILING])
-                    self.is_facing_right = (self.dx > 0)
-                else:
-                    self.dx = 0
-
-            # 3. 地面区 (强制倒立)
-            # 只要切入这几个静态动作，强行消除水平速度，绝不给它滑行的机会
-            elif new_state in ['IDLE', 'STAND_TWO_FOOT', 'LAND']:
-                self.dx = 0
-            elif new_state == 'WALK':
-                # 动态动作：起步瞬间，随机决定往左走还是往右走！
-                self.dx = random.choice([-SPEED_WALK, SPEED_WALK])
-                # 根据速度的正负，立刻决定狐狐的朝向
+        # 2. 天花板区 (强制倒立)
+        elif new_state in ['CEILING_ENTER', 'CEILING_WALK', 'CEILING_IDLE']:
+            self.is_upside_down = True  # 【核心】：开启倒立！
+            self.dy = 0
+            if new_state == 'CEILING_WALK':
+                self.dx = random.choice([-SPEED_CEILING, SPEED_CEILING])
                 self.is_facing_right = (self.dx > 0)
-            # ==========================================
-            # 【新增：起跳上墙的专属弹射器】
-            elif new_state == 'JUMP_TO_WALL':
-                self.dy = -SPEED_JUMP_Y  # 强力对抗重力，起飞！
+            else:
+                self.dx = 0
 
-                # 雷达索敌：判断哪边墙近，直接锁定轰炸！
-                if self.x() < self.screen_width / 2:
-                    self.dx = -SPEED_JUMP_X
-                    self.is_facing_right = False
-                else:
-                    self.dx = SPEED_JUMP_X
-                    self.is_facing_right = True
-            # ==========================================
-            # 顺便还可以把马上要用到的动画图立刻刷出来
-            self.animate()
+        # 3. 地面区
+        # 只要切入这几个静态动作，强行消除水平速度，绝不给它滑行的机会
+        elif new_state in ['IDLE', 'STAND_TWO_FOOT', 'STAND_FOUR_FOOT', 'LAND']:
+            self.dx = 0
+        elif new_state in ['WALK', 'WALK_FOUR_FOOT']:
+            # 动态动作：起步瞬间，随机决定往左走还是往右走！
+            self.dx = random.choice([-SPEED_WALK, SPEED_WALK])
+            # 根据速度的正负，立刻决定狐狐的朝向
+            self.is_facing_right = (self.dx > 0)
+        # ==========================================
+        # 【新增：起跳上墙的专属弹射器】
+        elif new_state == 'JUMP_TO_WALL':
+            self.dy = -SPEED_JUMP_Y  # 强力对抗重力，起飞！
+
+            # 雷达索敌：判断哪边墙近，直接锁定轰炸！
+            if self.x() < self.screen_width / 2:
+                self.dx = -SPEED_JUMP_X
+                self.is_facing_right = False
+            else:
+                self.dx = SPEED_JUMP_X
+                self.is_facing_right = True
+        # ==========================================
+        # 顺便还可以把马上要用到的动画图立刻刷出来
+        self.animate()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -464,6 +508,7 @@ class FoxPet(QMainWindow):
             self.change_state('DRAG')
             # 【新增】：清空黑匣子，记录抓起瞬间的时间和坐标
             self.mouse_history = [(time.time(), event.globalPos())]
+        super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
         if self.is_dragged:
@@ -482,37 +527,50 @@ class FoxPet(QMainWindow):
             self.move(current_pos - self.drag_pos)
 
     def mouseReleaseEvent(self, event):
-        self.is_dragged = False
-        self.change_state('FALL')
-        # ==========================================
-        # 【核心：黑匣子结算真实速度】
-        if len(self.mouse_history) >= 2:
-            old_time, old_pos = self.mouse_history[0]  # 0.1秒前的位置
-            new_time, new_pos = self.mouse_history[-1]  # 现在的最后位置
+        if event.button() == Qt.LeftButton:
+            self.is_dragged = False
+            # ==========================================
+            # 【核心改造区：拦截“戳脸”操作】
+            # ==========================================
+            if len(self.mouse_history) > 0:
+                start_time, start_pos = self.mouse_history[0]
+                release_time = time.time()
+                release_pos = event.globalPos()
 
-            dt = new_time - old_time  # 经历了多少秒
+                # 算总位移和总时长
+                distance = ((release_pos.x() - start_pos.x()) ** 2 + (release_pos.y() - start_pos.y()) ** 2) ** 0.5
+                duration = release_time - start_time
 
-            # 如果你抓着不动停了超过 0.15 秒才松手，说明你不想扔，动能清零
-            if dt > 0 and (time.time() - new_time) < DRAG_PAUSE_THRESHOLD:
-                # 算出一秒钟能飞多少像素 (像素/秒)
-                vx = (new_pos.x() - old_pos.x()) / dt
-                vy = (new_pos.y() - old_pos.y()) / dt
+                # 如果移动极小（<5像素），且时间极短（<0.3秒），判定为“戳”！
+                if distance < 5 and duration < 0.3:
+                    self.change_state('POKED')
+                    # 物理反馈：原地惊吓起跳，并根据朝向后退
+                    self.dy = -15  # 给个大的向上动能，让它真跳起来！
+                    self.dx = -5 if getattr(self, 'is_facing_right', True) else 5
+                    self.mouse_history.clear()
+                    super().mouseReleaseEvent(event)
+                    return  # <--- 绝对铁门！打断施法，不再执行下面的抛投！
+            # ==========================================
+            # 以下保留你原汁原味的抛投物理引擎...
+            self.change_state('FALL')
+            if len(self.mouse_history) >= 2:
+                old_time, old_pos = self.mouse_history[0]
+                new_time, new_pos = self.mouse_history[-1]
+                dt = new_time - old_time
 
-                frame_seconds = REFRESH_RATE / 1000.0
-                # 转换成咱们引擎的每帧速度 (假设刷新率是 20ms，即 0.02秒)
-                # 直接乘个爽快系数！横向 1.5 倍，纵向 2.5 倍！
-                self.dx = vx * frame_seconds * THROW_BOOST_X
-                self.dy = vy * frame_seconds * THROW_BOOST_Y
+                if dt > 0 and (time.time() - new_time) < DRAG_PAUSE_THRESHOLD:
+                    vx = (new_pos.x() - old_pos.x()) / dt
+                    vy = (new_pos.y() - old_pos.y()) / dt
+                    frame_seconds = REFRESH_RATE / 1000.0
+                    self.dx = vx * frame_seconds * THROW_BOOST_X
+                    self.dy = vy * frame_seconds * THROW_BOOST_Y
 
-                # 暴力限速，防止飞出银河系报错
-                self.dx = max(-100, min(100, self.dx))
-                self.dy = max(-200, min(100, self.dy))
-
+                    self.dx = max(-100, min(100, self.dx))
+                    self.dy = max(-200, min(100, self.dy))
+                else:
+                    self.dx, self.dy = 0, 0
             else:
-                self.dx = 0
-                self.dy = 0
-        else:
-            self.dx = 0
-            self.dy = 0
-        # ==========================================
+                self.dx, self.dy = 0, 0
 
+            self.mouse_history.clear()
+        super().mouseReleaseEvent(event)
