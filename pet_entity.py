@@ -235,7 +235,7 @@ class FoxPet(QMainWindow):
     def change_state(self, new_state):
         if self.current_state == new_state: return
 
-        print(f"【状态切换】{self.current_state} -> {new_state}")
+        # print(f"【状态切换】{self.current_state} -> {new_state}")
         self.current_state = new_state
         self.state_timer = self.frame_index = self.tick_count = 0
 

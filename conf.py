@@ -17,7 +17,7 @@ WALL_OFFSET = 48  # 角色挂在墙上减去的宽度
 SPEED_WALK = 2  # 正常溜达的水平速度
 SPEED_RUN = 3  # 发现目标时的赶路速度
 SPEED_CLIMB = 2  # 爬墙的垂直速度
-SPEED_CEILING = 8  # 天花板倒立漫步的速度
+SPEED_CEILING = 2  # 天花板倒立漫步的速度
 SPEED_JUMP_X = 8  # 决定跳得有多远
 SPEED_JUMP_Y = 16  # 决定跳得有多高
 SPEED_HUNT_X = 4        # 捕猎扑击的水平前冲力 (比跳墙小一半，显得短促有力)
@@ -67,7 +67,14 @@ STATES = {
     'CEILING_EXIT':     {'frames': ['ceiling_exit.png'], 'speed': 10, 'loop': False, 'duration': (0.5, 0.5)}, # 下墙拐弯中间态
     'CEILING_WALK':     {'frames': ['ceiling_walk_01.png', 'ceiling_walk_02.png'], 'speed': 5, 'loop': True,
                          'duration': (2.0, 6.0)},
-    'CEILING_IDLE':     {'anim_pools': [['ceiling_idle.png'], ['ceiling_swing_01.png', 'ceiling_swing_02.png']],
+    'CEILING_IDLE':     {'anim_pools': [['ceiling_idle_01.png'], ['ceiling_idle_02.png'],
+                                        ['ceiling_swing_01.png', 'ceiling_swing_02.png', 'ceiling_swing_03.png',
+                                         'ceiling_swing_04.png', 'ceiling_swing_03.png', 'ceiling_swing_02.png',
+                                         'ceiling_swing_05.png', 'ceiling_swing_06.png', 'ceiling_swing_05.png',
+                                         'ceiling_swing_02.png', 'ceiling_swing_01.png'],
+                                        ['ceiling_swing_11.png', 'ceiling_swing_12.png', 'ceiling_swing_13.png',
+                                         'ceiling_swing_14.png', 'ceiling_swing_15.png']
+                                        ],
                          'speed': 10, 'loop': True, 'duration': (3.0, 8.0)},
 
     # 鼠标事件 (因为主要靠物理打断，所以保留无限长的 99)
