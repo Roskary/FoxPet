@@ -55,16 +55,10 @@ class FoxPet(QMainWindow):
 
     def _init_tray(self):
         self.tray_icon = QSystemTrayIcon(self)
-        # 获取当前代码文件所在的绝对目录
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        # 拼凑出图标的绝对路径 (比如 D:\project\icon.ico)
-        icon_path = os.path.join(base_dir, "icon.ico")
+        # 直接使用 conf.py 里定义好的 BASE_DIR，极其优雅！
+        icon_path = os.path.join(BASE_DIR, "icon.png")
         self.tray_icon.setIcon(QIcon(icon_path))
         tray_menu = QMenu(self)
-
-        # self.tray_icon = QSystemTrayIcon(self)
-        # self.tray_icon.setIcon(QIcon("icon.png"))
-        # tray_menu = QMenu(self)
 
         summon_action = QAction("🦊 召唤狐狐", self)
         summon_action.triggered.connect(self.summon_fox)
